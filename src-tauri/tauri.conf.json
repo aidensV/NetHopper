@@ -24,6 +24,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -31,5 +32,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExRDU0OUYwQTlBQkFBNDQKUldSRXFxdXA4RW5WRVJzQjNZK0tSQm4yZWQ4TTJGNE5qcmJtdGxaeWh6dENhdjRqTW42Nno3NkMK",
+      "endpoints": [
+        "https://github.com/aidensV/NetHopper/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

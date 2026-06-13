@@ -1,41 +1,43 @@
 <script setup lang="ts">
-import { ref, onMounted, reactive } from "vue"
+import { ref, onMounted, computed } from "vue"
 import Breadcrumb from "./components/Breadcrumb.vue"
-import { listGroups, listHosts, createGroup, createHost, updateHost, renameGroup, deleteGroup, sshExec } from "./api"
+import { useTabStore } from "./stores/tabStore"
+import { useConfirmStore } from "./stores/confirm"
+import {
+    listGroups,
+    listHosts,
+    createGroup,
+    updateHost,
+    renameGroup,
+    deleteGroup,
+    createHost,
+    deleteHost,
+} from "./api"
 import type { Group, Host } from "./types"
-import SshTerminal from "./components/Sshterminal.vue";
-import { SquarePen, X } from "lucide-vue-next";
+import { Computer, Folder, KeyRound, Plus, SquarePen, X, Network, LayoutGrid, Server, FolderPlus, ArrowRight, PanelRightClose, ShieldCheck } from "lucide-vue-next"
+import PasswordManager from "./views/password-manager/PasswordManager.vue"
+import { usePasswordManagerStore } from "./stores/passwordManager"
+import FormPasswordManager from "./views/password-manager/FormPasswordManager.vue"
+import { useToastStore } from "./stores/toastStore"
+import TunnelManager from "./views/ssh-tunnel/TunnelManager.vue"
+
+const confirm = useConfirmStore()
+const tabStore = useTabStore()
+const toast = useToastStore()
 
 const currentParentId = ref<number | null>(null)
 const breadcrumb = ref<Group[]>([])
 const groups = ref<Group[]>([])
 const hosts = ref<Host[]>([])
-const newGroupName = ref("")
-
-const selectedHost = ref<Host | null>(null)
-const command = ref("")
-const output = ref("")
-const running = ref(false)
 
 async function load() {
     groups.value = await listGroups(currentParentId.value)
     hosts.value = await listHosts(currentParentId.value)
 }
-const editingGroupId = ref<number | null>(null)
-const editGroupName = ref("")
 
 async function enterGroup(group: Group) {
     breadcrumb.value.push(group)
     currentParentId.value = group.id
-    await load()
-}
-
-async function goBack() {
-    breadcrumb.value.pop()
-    currentParentId.value =
-        breadcrumb.value.length > 0
-            ? breadcrumb.value[breadcrumb.value.length - 1].id
-            : null
     await load()
 }
 
@@ -50,362 +52,265 @@ async function navigateBreadcrumb(index: number) {
     await load()
 }
 
-async function addGroup() {
-    if (!newGroupName.value) return
-    await createGroup(newGroupName.value, currentParentId.value)
-    newGroupName.value = ""
-    await load()
+const showGroupForm = ref(false)
+const isEditingGroup = ref(false)
+const editingGroupId = ref<number | null>(null)
+const groupFormName = ref("")
+
+function openCreateGroupForm() {
+    groupFormName.value = ""
+    isEditingGroup.value = false
+    editingGroupId.value = null
+    showGroupForm.value = true
+    formHost.value = { id: 0, name: "", host: "", port: 22, username: "", authType: "password", passwordId: 0 }
+    showHostForm.value = false
 }
 
-const newHost = ref({
-    name: "",
-    host: "",
-    port: 22,
-    username: "",
-    authType: "password",
-    password: "",
-})
+function openEditGroupForm(group: Group) {
+    groupFormName.value = group.name
+    isEditingGroup.value = true
+    editingGroupId.value = group.id
+    showGroupForm.value = true
+    showHostForm.value = false
+}
 
-async function addHost() {
-    await createHost({
-        ...newHost.value,
-        groupId: currentParentId.value,
-    })
+function closeGroupForm() {
+    showGroupForm.value = false
+    isEditingGroup.value = false
+    editingGroupId.value = null
+    groupFormName.value = ""
+}
 
-    newHost.value = {
-        name: "",
-        host: "",
-        port: 22,
-        username: "",
-        authType: "password",
-        password: "",
+async function submitGroupForm() {
+    if (!groupFormName.value.trim()) return
+    try {
+        if (isEditingGroup.value && editingGroupId.value !== null) {
+            await renameGroup(editingGroupId.value, groupFormName.value)
+            toast.success("Folder renamed")
+        } else {
+            await createGroup(groupFormName.value, currentParentId.value)
+            toast.success("Folder created")
+        }
+        closeGroupForm()
+        await load()
+    } catch (e: any) {
+        toast.error(`Unable to save folder: ${e}`)
     }
-
-    await load()
 }
 
-const editingHostId = ref<number | null>(null)
+async function removeGroup(group: Group) {
+    const ok = await confirm.confirm({
+        title: "Delete Folder",
+        message: `Are you sure you want to delete folder "${group.name}"?`,
+    })
+    if (!ok) return
+    try {
+        await deleteGroup(group.id)
+        toast.success("Folder deleted")
+        await load()
+    } catch (e: any) {
+        toast.error(`Unable to delete folder: ${e}`)
+    }
+}
 
-const editHost = ref({
+const showHostForm = ref(false)
+const emptyHostForm = () => ({
     id: 0,
     name: "",
     host: "",
     port: 22,
     username: "",
     authType: "password",
-    password: "",
+    passwordId: 0,
 })
+const formHost = ref(emptyHostForm())
 
-function startEditHost(h: Host) {
-    editingHostId.value = h.id
-    editHost.value = {
-        id: h.id,
-        name: h.name,
-        host: h.host,
-        port: h.port,
-        username: h.username,
-        authType: h.auth_type,
-        password: h.password || "",
+function openCreateHostForm() {
+    formHost.value = emptyHostForm()
+    showHostForm.value = true
+    closeGroupForm()
+}
+
+async function addHost() {
+    try {
+        await createHost({ ...formHost.value, groupId: currentParentId.value })
+        toast.success("Host added")
+        showHostForm.value = false
+        formHost.value = emptyHostForm()
+        await load()
+    } catch (e: any) {
+        toast.error(`Unable to add host: ${e}`)
     }
+}
+
+function startEditHost(host: Host) {
+    formHost.value = {
+        id: host.id,
+        name: host.name,
+        host: host.host,
+        port: host.port,
+        username: host.username,
+        authType: host.auth_type,
+        passwordId: host.password_id || 0,
+    }
+    showHostForm.value = true
+    closeGroupForm()
 }
 
 async function saveEditHost() {
-    await updateHost({
-        id: editHost.value.id,
-        name: editHost.value.name,
-        host: editHost.value.host,
-        port: editHost.value.port,
-        username: editHost.value.username,
-        auth_type: editHost.value.authType,
-        group_id: currentParentId.value,
-        password: editHost.value.password,
-    })
-
-    editingHostId.value = null
-    await load()
-}
-
-function cancelEditHost() {
-    editingHostId.value = null
-}
-
-function startRenameGroup(g: Group) {
-    editingGroupId.value = g.id
-    editGroupName.value = g.name
-}
-
-async function updateGroup() {
-    if (!editingGroupId.value) return
-
-    await renameGroup(editingGroupId.value, editGroupName.value)
-    editingGroupId.value = null
-    editGroupName.value = ""
-    await load()
-}
-
-function cancelRenameGroup() {
-    editingGroupId.value = null
-}
-
-async function removeGroup(g: Group) {
-    if (!confirm(`Delete group "${g.name}"?`)) return
-
     try {
-        await deleteGroup(g.id)
+        await updateHost({
+            id: formHost.value.id,
+            name: formHost.value.name,
+            host: formHost.value.host,
+            port: formHost.value.port,
+            username: formHost.value.username,
+            auth_type: formHost.value.authType,
+            group_id: currentParentId.value,
+            password_id: formHost.value.passwordId,
+        })
+        showHostForm.value = false
+        formHost.value = emptyHostForm()
+        toast.success("Host updated")
         await load()
     } catch (e: any) {
-        alert(e)
+        toast.error(`Unable to update host: ${e}`)
     }
 }
 
-const showForm = reactive({
-    formHost: false,
-    formGroup: false,
-    editHostForm: false,
-    editGroupForm: false,
+async function handleDeleteHost(host: Host) {
+    const ok = await confirm.confirm({
+        title: "Delete Host",
+        message: `Are you sure you want to delete host "${host.name}"?`,
+    })
+    if (!ok) return
+    try {
+        await deleteHost(host.id)
+        toast.success("Host deleted")
+        await load()
+    } catch (e: any) {
+        toast.error(`Unable to delete host: ${e}`)
+    }
+}
+
+const passwordManagerStore = usePasswordManagerStore()
+const activeSection = ref<"hosts" | "passwords" | "tunnels">("hosts")
+const pageTitle = computed(() => ({
+    hosts: breadcrumb.value.length ? breadcrumb.value[breadcrumb.value.length - 1].name : "All connections",
+    passwords: "Password vault",
+    tunnels: "SSH tunnels",
+})[activeSection.value])
+const pageDescription = computed(() => ({
+    hosts: "Organize servers and start a secure SSH session.",
+    passwords: "Keep reusable credentials encrypted and close at hand.",
+    tunnels: "Manage local forwarding and SOCKS5 proxy connections.",
+})[activeSection.value])
+
+function switchSection(section: "hosts" | "passwords" | "tunnels") {
+    activeSection.value = section
+    showHostForm.value = false
+    closeGroupForm()
+    passwordManagerStore.closeFormManagePassword()
+}
+
+onMounted(() => {
+    load()
+    passwordManagerStore.load()
 })
-
-const createFormGroup = () => {
-    newGroupName.value = ""
-    showForm.formGroup = true
-    showForm.editGroupForm = false
-}
-
-const editFormGroup = (group: Group) => {
-    newGroupName.value = group.name
-    showForm.formGroup = true
-    showForm.editGroupForm = true
-}
-
-
-
-onMounted(load)
 </script>
 
 <template>
-
-    <div class="flex overflow-hidden">
-        <!-- LEFT (dynamic) -->
-        <div class="flex-1 p-4">
-            <div class="w-full bg-gray-800 px-2 py-2 rounded-lg flex gap-2 mb-4">
-                <div @click="showForm.formHost = true"
-                    class="text-md text-white border px-2 py-1 rounded w-fit flex gap-2 cursor-pointer hover:bg-gray-700 hover:text-gray-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor" class="size-6">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
-                    </svg>
-
-                    New Host
-                </div>
-                <div @click="createFormGroup"
-                    class="text-md text-white border px-2 py-1 flex gap-2 rounded w-fit cursor-pointer hover:bg-gray-700 hover:text-gray-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor" class="size-6">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-                    </svg>
-                    New Group
-                </div>
+    <div class="flex h-full overflow-hidden bg-[#080c13]">
+        <aside class="flex w-56 shrink-0 flex-col border-r border-white/6 bg-[#090e16] p-3">
+            <div class="px-3 pb-3 pt-2 text-[10px] font-bold uppercase tracking-[.18em] text-slate-600">Workspace</div>
+            <nav class="space-y-1">
+                <button v-for="item in [
+                    { id: 'hosts', label: 'Connections', icon: LayoutGrid },
+                    { id: 'passwords', label: 'Password vault', icon: KeyRound },
+                    { id: 'tunnels', label: 'SSH tunnels', icon: Network },
+                ]" :key="item.id" @click="switchSection(item.id as 'hosts' | 'passwords' | 'tunnels')"
+                    class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
+                    :class="activeSection === item.id ? 'bg-cyan-400/10 text-cyan-300' : 'text-slate-500 hover:bg-white/4 hover:text-slate-200'">
+                    <component :is="item.icon" :size="17" />{{ item.label }}
+                </button>
+            </nav>
+            <div class="mt-auto rounded-xl border border-white/6 bg-white/[.025] p-3">
+                <div class="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-300"><ShieldCheck :size="15" class="text-emerald-400" /> Local-first security</div>
+                <p class="text-[11px] leading-relaxed text-slate-600">Credentials and connection data stay on this device.</p>
             </div>
-            <!-- <button class="px-4 py-2 bg-blue-600 text-white rounded" @click="showForm = true">
-                Add
-            </button> -->
+        </aside>
 
-            <Breadcrumb v-if="breadcrumb.length > 0" :items="breadcrumb" @navigate="navigateBreadcrumb" />
+        <main class="min-w-0 flex-1 overflow-y-auto">
+            <header class="sticky top-0 z-20 flex min-h-24 items-center justify-between border-b border-white/6 bg-[#080c13]/90 px-7 py-5 backdrop-blur-xl">
+                <div><h1 class="text-xl font-semibold tracking-tight text-slate-100">{{ pageTitle }}</h1><p class="mt-1 text-xs text-slate-500">{{ pageDescription }}</p></div>
+                <div class="flex items-center gap-2">
+                    <template v-if="activeSection === 'hosts'">
+                        <button @click="openCreateGroupForm" class="secondary-button flex items-center gap-2 rounded-lg px-3 py-2 text-xs"><FolderPlus :size="15" /> New folder</button>
+                        <button @click="openCreateHostForm" class="primary-button flex items-center gap-2 rounded-lg px-3 py-2 text-xs"><Plus :size="15" /> New host</button>
+                    </template>
+                    <button v-else-if="activeSection === 'passwords'" @click="passwordManagerStore.openFormManagePassword()" class="primary-button flex items-center gap-2 rounded-lg px-3 py-2 text-xs"><Plus :size="15" /> New credential</button>
+                </div>
+            </header>
 
-
-            <!-- Back -->
-            <button v-if="breadcrumb.length > 0" @click="goBack" class="border px-2 py-1 text-sm">
-                ← Back
-            </button>
-
-            <!-- Create group -->
-
-
-            <!-- Groups -->
-            <div>
-                <h2 class="font-semibold text-md mb-2">Groups</h2>
-                <div class="flex flex-wrap gap-2">
-                    <div v-for="g in groups" :key="g.id"
-                        class="group flex justify-between w-52 items-center bg-gray-800 border text-gray-300 p-4 mb-1 rounded-md border-gray-800 hover:bg-gray-700">
-                        <div v-if="editingGroupId !== g.id" class="cursor-pointer flex gap-2 hover:text-green-500"
-                            @click="enterGroup(g)">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor" class="size-6">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-                            </svg>
-                            {{ g.name }}
-                        </div>
-
-                        <div class="opacity-0 group-hover:opacity-100 flex gap-2 text-sm ">
-                            <button @click.stop="editFormGroup(g)">
-                                <div class="cursor-pointer hover:text-green-500">
-                                    <SquarePen :size="20" color="white" class="hover:bg-blue-600" />
-
+            <div class="p-7">
+                <template v-if="activeSection === 'hosts'">
+                    <Breadcrumb v-if="breadcrumb.length > 0" :items="breadcrumb" @navigate="navigateBreadcrumb" />
+                    <section v-if="groups.length" class="mb-8">
+                        <div class="mb-3 flex items-center justify-between"><h2 class="text-xs font-bold uppercase tracking-[.14em] text-slate-500">Folders</h2><span class="text-[11px] text-slate-600">{{ groups.length }} total</span></div>
+                        <div class="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
+                            <article v-for="g in groups" :key="g.id" @click="enterGroup(g)" class="surface surface-hover group flex cursor-pointer items-center gap-3 rounded-xl p-4">
+                                <div class="grid size-10 shrink-0 place-items-center rounded-lg bg-amber-400/10 text-amber-300"><Folder :size="19" /></div>
+                                <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold text-slate-200">{{ g.name }}</div><div class="mt-1 text-[11px] text-slate-600">Connection folder</div></div>
+                                <div class="flex opacity-0 transition group-hover:opacity-100">
+                                    <button class="icon-button size-8" title="Rename folder" @click.stop="openEditGroupForm(g)"><SquarePen :size="15" /></button>
+                                    <button class="icon-button size-8 hover:!text-rose-400" title="Delete folder" @click.stop="removeGroup(g)"><X :size="16" /></button>
                                 </div>
-                            </button>
-                            <button @click.stop="removeGroup(g)">
-                                <div class="cursor-pointer hover:text-red-500">
-                                    <X :size="20" color="white" class="hover:bg-red-600" />
-                                </div>
-                            </button>
+                            </article>
                         </div>
-                    </div>
-                </div>
-                <!-- <ul>
-                    <li v-for="g in groups" :key="g.id" class="flex justify-between items-center border p-2 mb-1">
-                        <div v-if="editingGroupId !== g.id" class="cursor-pointer" @click="enterGroup(g)">
-                            📁 {{ g.name }}
+                    </section>
+                    <section>
+                        <div class="mb-3 flex items-center justify-between"><h2 class="text-xs font-bold uppercase tracking-[.14em] text-slate-500">Hosts</h2><span class="text-[11px] text-slate-600">{{ hosts.length }} available</span></div>
+                        <div v-if="hosts.length" class="grid grid-cols-[repeat(auto-fill,minmax(245px,1fr))] gap-3">
+                            <article v-for="h in hosts" :key="h.id" @click="tabStore.openTab(h)" class="surface surface-hover group cursor-pointer rounded-xl p-4">
+                                <div class="mb-5 flex items-start justify-between"><div class="grid size-10 place-items-center rounded-lg bg-cyan-400/10 text-cyan-300"><Server :size="19" /></div><div class="flex opacity-0 transition group-hover:opacity-100"><button class="icon-button size-8" title="Edit host" @click.stop="startEditHost(h)"><SquarePen :size="15" /></button><button class="icon-button size-8 hover:!text-rose-400" title="Delete host" @click.stop="handleDeleteHost(h)"><X :size="16" /></button></div></div>
+                                <div class="truncate text-sm font-semibold text-slate-100">{{ h.name }}</div>
+                                <div class="mt-1 truncate font-mono text-[11px] text-slate-500">{{ h.username }}@{{ h.host }}:{{ h.port }}</div>
+                                <div class="mt-4 flex items-center justify-between border-t border-white/6 pt-3"><span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400"><span class="size-1.5 rounded-full bg-emerald-400"></span> Ready</span><span class="flex items-center gap-1 text-[11px] font-medium text-slate-500 group-hover:text-cyan-300">Connect <ArrowRight :size="13" /></span></div>
+                            </article>
                         </div>
-
-                        <div v-else class="flex gap-2 w-full">
-                            <input v-model="editGroupName" class="border px-2 py-1 flex-1" />
-                            <button @click="saveRenameGroup" class="border px-2">Save</button>
-                            <button @click="cancelRenameGroup" class="border px-2">Cancel</button>
-                        </div>
-
-                        <div class="flex gap-2 text-sm">
-                            <button @click.stop="startRenameGroup(g)">✏️</button>
-                            <button @click.stop="removeGroup(g)">🗑</button>
-                        </div>
-                    </li>
-                </ul> -->
-
+                        <div v-else class="surface grid min-h-56 place-items-center rounded-2xl border-dashed text-center"><div><div class="mx-auto mb-3 grid size-11 place-items-center rounded-xl bg-white/5 text-slate-500"><Computer :size="20" /></div><p class="text-sm font-medium text-slate-300">No hosts in this folder</p><p class="mt-1 text-xs text-slate-600">Add a host to start an SSH session.</p></div></div>
+                    </section>
+                </template>
+                <PasswordManager v-else-if="activeSection === 'passwords'" />
+                <TunnelManager v-else />
             </div>
-            <div>
-                <h2 class="font-semibold">Hosts</h2>
-                <!-- <div class="border p-3 space-y-2">
-            <h3 class="font-semibold">Create Host</h3>
+        </main>
 
-            <input v-model="newHost.name" placeholder="Name" class="border px-2 py-1 w-full" />
-            <input v-model="newHost.host" placeholder="Host / IP" class="border px-2 py-1 w-full" />
-            <input v-model.number="newHost.port" type="number" class="border px-2 py-1 w-full" />
-            <input v-model="newHost.username" placeholder="Username" class="border px-2 py-1 w-full" />
-            <input v-model="newHost.password" placeholder="Password" class="border px-2 py-1 w-full" />
-
-            <select v-model="newHost.authType" class="border px-2 py-1 w-full">
-                <option value="password">Password</option>
-                <option value="key">SSH Key</option>
-            </select>
-
-            <button @click="addHost" class="border px-3 py-1">
-                Add Host
-            </button>
-        </div> -->
-
-                <ul>
-                    <li v-for="h in hosts" :key="h.id" @click="selectedHost = h" class="border p-2 mb-2">
-                        <!-- VIEW MODE -->
-                        <div v-if="editingHostId !== h.id" class="flex justify-between">
-                            <div>
-                                🖥 {{ h.name }} ({{ h.username }}@{{ h.host }}:{{ h.port }})
-                            </div>
-                            <button @click="startEditHost(h)" class="text-sm underline">
-                                ✏️ Edit
-                            </button>
-                        </div>
-
-                        <!-- EDIT MODE -->
-                        <div v-else class="space-y-2">
-                            <input v-model="editHost.name" class="border px-2 py-1 w-full" />
-                            <input v-model="editHost.host" class="border px-2 py-1 w-full" />
-                            <input v-model.number="editHost.port" type="number" class="border px-2 py-1 w-full" />
-                            <input v-model="editHost.username" class="border px-2 py-1 w-full" />
-
-                            <select v-model="editHost.authType" class="border px-2 py-1 w-full">
-                                <option value="password">Password</option>
-                                <option value="key">SSH Key</option>
-                            </select>
-
-                            <div class="flex gap-2">
-                                <button @click="saveEditHost" class="border px-3 py-1">
-                                    Save
-                                </button>
-                                <button @click="cancelEditHost" class="border px-3 py-1">
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    </li>
-                    <div v-if="selectedHost" class="border p-3">
-                        <SshTerminal :host="selectedHost" />
-                    </div>
-
-                </ul>
-
-            </div>
-
-            <!-- list / table -->
-        </div>
-
-        <!-- RIGHT (fixed, stable) -->
+        <FormPasswordManager />
         <Transition name="slide">
-            <aside v-if="showForm.formGroup" class="w-[320px] shrink-0 bg-gray-900 border-l p-4">
-                <div class="flex bg-gray-800 p-2 rounded-lg items-center mb-8">
-                    <button class="text-sm text-gray-500 hover:text-white cursor-pointer"
-                        @click="showForm.formGroup = false">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="size-6">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                        </svg>
-                    </button>
-                    <div class="flex-1 flex justify-center">
-                        <span class="text-lg font-semibold">Create New Group</span>
-                    </div>
-                </div>
-
-                <!-- form -->
-                <div class="">
-
-                    <form class="max-w-sm mx-auto">
-                        <label for="input-group-1" class="block mb-2.5 text-md font-medium text-heading">Group
-                            Name</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none w-8 ">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                    stroke-width="1.5" stroke="currentColor" class="size-6">
-                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                        d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-                                </svg>
-
-
-                            </div>
-                            <input v-model="newGroupName" type="text" id="input-group-1"
-                                class="block w-full ps-9 pe-3 py-2.5 bg-gray-700 border border-gray-600 text-white text-sm rounded-md placeholder-gray-400 focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
-                                placeholder="Group name" />
-                        </div>
-                    </form>
-
-                    <div class="flex justify-center">
-
-                        <button @click="showForm.editGroupForm ? updateGroup() : addGroup()"
-                            class="border border-gray-600 px-2 py-0.5 mt-8 rounded-md bg-green-700 text-white hover:bg-green-800 cursor-pointer">
-                            {{ showForm.editGroupForm ? 'Update Group' : 'Create Group' }}
-                        </button>
-                    </div>
+            <aside v-if="showHostForm" class="form-panel w-[350px] shrink-0 overflow-y-auto border-l border-white/8 bg-[#0b111a] p-6">
+                <div class="mb-7 flex items-start justify-between"><div><p class="text-base font-semibold text-slate-100">{{ formHost.id === 0 ? 'New host' : 'Edit host' }}</p><p class="mt-1 text-xs text-slate-600">SSH connection details</p></div><button class="icon-button size-8" @click="showHostForm = false"><PanelRightClose :size="18" /></button></div>
+                <div class="space-y-4">
+                    <div><label class="panel-label">Display name</label><input v-model="formHost.name" class="field" placeholder="Production server" /></div>
+                    <div><label class="panel-label">Host or IP address</label><input v-model="formHost.host" class="field font-mono" placeholder="192.168.1.10" /></div>
+                    <div class="grid grid-cols-[1fr_95px] gap-3"><div><label class="panel-label">Username</label><input v-model="formHost.username" class="field" placeholder="root" /></div><div><label class="panel-label">Port</label><input v-model.number="formHost.port" type="number" class="field" /></div></div>
+                    <div><label class="panel-label">Authentication</label><select v-model="formHost.authType" class="field"><option value="none">No authentication</option><option value="password">Password</option><option value="key">SSH key</option></select></div>
+                    <div v-if="formHost.authType === 'password'"><label class="panel-label">Saved credential</label><select v-model="formHost.passwordId" class="field"><option :value="0">Select credential</option><option v-for="password in passwordManagerStore.passwords" :key="password.id" :value="password.id">{{ password.name }}</option></select></div>
+                    <button @click="formHost.id === 0 ? addHost() : saveEditHost()" class="primary-button mt-3 w-full rounded-lg py-2.5 text-sm">{{ formHost.id === 0 ? 'Create host' : 'Save changes' }}</button>
                 </div>
             </aside>
         </Transition>
-
+        <Transition name="slide">
+            <aside v-if="showGroupForm" class="form-panel w-[350px] shrink-0 border-l border-white/8 bg-[#0b111a] p-6">
+                <div class="mb-7 flex items-start justify-between"><div><p class="text-base font-semibold text-slate-100">{{ isEditingGroup ? 'Rename folder' : 'New folder' }}</p><p class="mt-1 text-xs text-slate-600">Keep related connections together</p></div><button class="icon-button size-8" @click="closeGroupForm"><PanelRightClose :size="18" /></button></div>
+                <label class="panel-label">Folder name</label><input id="group-name-input" v-model="groupFormName" class="field" placeholder="Production" @keyup.enter="submitGroupForm" />
+                <button @click="submitGroupForm" class="primary-button mt-5 w-full rounded-lg py-2.5 text-sm">{{ isEditingGroup ? 'Save changes' : 'Create folder' }}</button>
+            </aside>
+        </Transition>
     </div>
 </template>
 
-<style>
-.slide-enter-active,
-.slide-leave-active {
-    transition: all 0.3s ease;
-}
-
-.slide-enter-from {
-    transform: translateX(100%);
-    opacity: 0;
-}
-
-.slide-leave-to {
-    transform: translateX(100%);
-    opacity: 0;
-}
+<style scoped>
+.slide-enter-active, .slide-leave-active { transition: all .22s ease; }
+.slide-enter-from, .slide-leave-to { transform: translateX(100%); opacity: 0; }
 </style>
