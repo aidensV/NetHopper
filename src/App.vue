@@ -26,7 +26,7 @@ const showAbout = ref(false)
           <Orbit :size="17" :stroke-width="2.4" />
         </span>
         <span class="text-sm font-semibold tracking-tight">NetHopper</span>
-        <span class="rounded bg-white/6 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">0.1.1</span>
+        <span class="rounded bg-white/6 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">0.1.2</span>
       </button>
       <!-- Tab Home (tidak bisa di-close) -->
       <div class="terminal-tab flex h-9 items-center gap-2 rounded-t-lg border border-b-0 px-3 text-xs font-medium"

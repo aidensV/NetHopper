@@ -11,7 +11,7 @@ const emit = defineEmits<{
     (event: 'close'): void
 }>()
 
-const version = ref('0.1.1')
+const version = ref('0.1.2')
 
 const technologies = [
     { name: 'Tauri 2', detail: 'Desktop runtime', icon: Orbit },
