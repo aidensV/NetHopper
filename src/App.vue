@@ -6,6 +6,7 @@ import { Computer, X, House, Orbit } from "lucide-vue-next"
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import Toast from './components/Toast.vue'
 import AboutDialog from './components/AboutDialog.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
 import { ref } from 'vue'
 
 const tabStore = useTabStore()
@@ -70,4 +71,5 @@ const showAbout = ref(false)
   <ConfirmDialog />
   <Toast />
   <AboutDialog :open="showAbout" @close="showAbout = false" />
+  <UpdateDialog />
 </template>
