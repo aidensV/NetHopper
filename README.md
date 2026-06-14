@@ -2,7 +2,6 @@
 
 NetHopper is a lightweight, local-first SSH workspace for Windows. It combines an SSH terminal, organized host management, an encrypted credential vault, and SSH tunnels in one focused desktop application.
 
-> NetHopper is an independent project and is not affiliated with Termius.
 
 ## Features
 
@@ -126,54 +125,6 @@ The NSIS installer and updater artifacts are written under `src-tauri/target/rel
 
 Releases are built by [GitHub Actions](.github/workflows/release.yml) when a tag beginning with `v` is pushed.
 
-### One-time updater setup
-
-Generate an updater signing key:
-
-```powershell
-npm run tauri signer generate -- -w "$HOME\.tauri\nethopper.key"
-```
-
-Add these repository secrets under **Settings > Secrets and variables > Actions**:
-
-- `TAURI_SIGNING_PRIVATE_KEY`: complete contents of `nethopper.key`
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password used to generate the key
-
-Keep the private key backed up securely. Future updates must use the same signing key. Never commit it to the repository.
-
-The public key belongs in `src-tauri/tauri.conf.json`.
-
-### Publish a new version
-
-Keep the version synchronized in:
-
-- `package.json`
-- `package-lock.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock`
-- `src-tauri/tauri.conf.json`
-
-Then commit and push a matching tag:
-
-```powershell
-git add .
-git commit -m "release: v0.1.2"
-git tag v0.1.2
-git push origin main
-git push origin v0.1.2
-```
-
-GitHub Actions builds the installer, updater signature, and `latest.json`, then publishes the release.
-
-### Test the updater
-
-1. Install a published older version that already contains the updater client.
-2. Publish a newer version with a greater semantic version.
-3. Keep the older application open or restart it.
-4. Wait briefly for the update dialog.
-5. Select **Update now**, watch the download progress, and restart when prompted.
-
-An application version released before the updater client was added cannot discover updates retroactively. That version must be upgraded manually once.
 
 ## Security
 

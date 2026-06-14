@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { getVersion } from '@tauri-apps/api/app'
-import { Database, Github, KeyRound, Network, Orbit, Server, ShieldCheck, TerminalSquare, X } from 'lucide-vue-next'
+import { Database, Download, Github, KeyRound, LoaderCircle, Network, Orbit, RefreshCw, Server, ShieldCheck, TerminalSquare, X } from 'lucide-vue-next'
 
 defineProps<{
     open: boolean
+    availableVersion: string | null
+    checkingForUpdate: boolean
 }>()
 
 const emit = defineEmits<{
     (event: 'close'): void
+    (event: 'check-update'): void
 }>()
 
-const version = ref('0.1.2')
+const version = ref('0.1.3')
 
 const technologies = [
     { name: 'Tauri 2', detail: 'Desktop runtime', icon: Orbit },
@@ -94,6 +97,31 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                         <div>
                             <Network :size="15" class="mx-auto text-slate-500" />
                             <p class="mt-1.5 text-[10px] text-slate-500">Secure tunnels</p>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-white/6 px-7 py-5">
+                        <div class="flex items-center justify-between gap-4 rounded-xl border p-3.5"
+                            :class="availableVersion ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-white/6 bg-white/[.02]'">
+                            <div class="min-w-0">
+                                <p class="text-xs font-semibold"
+                                    :class="availableVersion ? 'text-cyan-300' : 'text-slate-300'">
+                                    {{ availableVersion ? `NetHopper ${availableVersion} is available` : 'Software updates' }}
+                                </p>
+                                <p class="mt-1 text-[10px] text-slate-600">
+                                    {{ availableVersion ? 'Download and install the latest release.' : 'Check GitHub Releases for a newer version.' }}
+                                </p>
+                            </div>
+                            <button class="shrink-0 rounded-lg px-3 py-2 text-[11px] font-semibold transition"
+                                :class="availableVersion ? 'primary-button' : 'secondary-button'"
+                                :disabled="checkingForUpdate" @click="emit('check-update')">
+                                <span class="flex items-center gap-1.5">
+                                    <LoaderCircle v-if="checkingForUpdate" :size="13" class="animate-spin" />
+                                    <Download v-else-if="availableVersion" :size="13" />
+                                    <RefreshCw v-else :size="13" />
+                                    {{ checkingForUpdate ? 'Checking...' : availableVersion ? 'View update' : 'Check now' }}
+                                </span>
+                            </button>
                         </div>
                     </div>
 

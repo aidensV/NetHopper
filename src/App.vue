@@ -11,6 +11,19 @@ import { ref } from 'vue'
 
 const tabStore = useTabStore()
 const showAbout = ref(false)
+const updateDialog = ref<InstanceType<typeof UpdateDialog> | null>(null)
+const availableUpdateVersion = ref<string | null>(null)
+const checkingForUpdate = ref(false)
+
+function handleUpdateStatus(status: { checking: boolean; availableVersion: string | null }) {
+  checkingForUpdate.value = status.checking
+  availableUpdateVersion.value = status.availableVersion
+}
+
+function openUpdateFromAbout() {
+  showAbout.value = false
+  updateDialog.value?.showUpdateDialog()
+}
 
 </script>
 
@@ -26,7 +39,7 @@ const showAbout = ref(false)
           <Orbit :size="17" :stroke-width="2.4" />
         </span>
         <span class="text-sm font-semibold tracking-tight">NetHopper</span>
-        <span class="rounded bg-white/6 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">0.1.2</span>
+        <span class="rounded bg-white/6 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">0.1.3</span>
       </button>
       <!-- Tab Home (tidak bisa di-close) -->
       <div class="terminal-tab flex h-9 items-center gap-2 rounded-t-lg border border-b-0 px-3 text-xs font-medium"
@@ -70,6 +83,7 @@ const showAbout = ref(false)
 
   <ConfirmDialog />
   <Toast />
-  <AboutDialog :open="showAbout" @close="showAbout = false" />
-  <UpdateDialog />
+  <AboutDialog :open="showAbout" :available-version="availableUpdateVersion"
+    :checking-for-update="checkingForUpdate" @close="showAbout = false" @check-update="openUpdateFromAbout" />
+  <UpdateDialog ref="updateDialog" @status="handleUpdateStatus" />
 </template>

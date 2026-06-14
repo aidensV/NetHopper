@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, shallowRef } from 'vue'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { ArrowDownToLine, CheckCircle2, RefreshCw, Sparkles, X } from 'lucide-vue-next'
 
-const update = ref<Update | null>(null)
+const emit = defineEmits<{
+    (event: 'status', value: { checking: boolean; availableVersion: string | null }): void
+}>()
+
+// Tauri's Update extends Resource and contains private fields. A deep Vue
+// proxy breaks those fields, so the native object must remain unproxied.
+const update = shallowRef<Update | null>(null)
 const open = ref(false)
 const checking = ref(false)
 const installing = ref(false)
@@ -17,9 +23,17 @@ async function checkForUpdate(showNoUpdate = false) {
 
     checking.value = true
     error.value = ''
+    emit('status', {
+        checking: true,
+        availableVersion: update.value?.version ?? null,
+    })
 
     try {
         update.value = await check()
+        emit('status', {
+            checking: false,
+            availableVersion: update.value?.version ?? null,
+        })
         if (update.value) {
             open.value = true
         } else if (showNoUpdate) {
@@ -34,7 +48,21 @@ async function checkForUpdate(showNoUpdate = false) {
         }
     } finally {
         checking.value = false
+        emit('status', {
+            checking: false,
+            availableVersion: update.value?.version ?? null,
+        })
     }
+}
+
+function showUpdateDialog() {
+    if (update.value) {
+        error.value = ''
+        open.value = true
+        return
+    }
+
+    checkForUpdate(true)
 }
 
 async function installUpdate() {
@@ -67,11 +95,15 @@ async function installUpdate() {
     }
 }
 
+async function restartApplication() {
+    await relaunch()
+}
+
 onMounted(() => {
     window.setTimeout(() => checkForUpdate(), 1800)
 })
 
-defineExpose({ checkForUpdate })
+defineExpose({ checkForUpdate, showUpdateDialog })
 </script>
 
 <template>
@@ -99,7 +131,7 @@ defineExpose({ checkForUpdate })
                                 NetHopper {{ update?.version }} has been installed. Restart to finish the update.
                             </p>
                             <button class="primary-button mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm"
-                                @click="relaunch">
+                                @click="restartApplication">
                                 <RefreshCw :size="16" /> Restart NetHopper
                             </button>
                         </template>
